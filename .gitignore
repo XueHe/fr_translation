@@ -1,0 +1,20 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Licensed/private data and generated output
+MRCONSO.RRF
+eligible_source_rows.jsonl.gz
+terms_shard_*.jsonl
+raw_responses.jsonl
+run_shard_*/
+*.safetensors
+models/
+checkpoints/
+private/
+
+# Scheduler output
+slurm-*.out
+logs/

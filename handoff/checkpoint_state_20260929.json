@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-29T16:18:51+0200",
+  "source_host": "cng6",
+  "eligible_source_rows": 5261793,
+  "unique_terms": 4496461,
+  "shards": [
+    {
+      "shard": 0,
+      "target": 2247816,
+      "journal_offset": 261592,
+      "trusted_resume_offset": 261456,
+      "action": "rollback 136 records generated after GPU 1 ECC condition was known"
+    },
+    {
+      "shard": 1,
+      "target": 2248645,
+      "journal_offset": 260072,
+      "trusted_resume_offset": 260072,
+      "action": "none"
+    }
+  ],
+  "input_shard_sha256": [
+    "027e6e856479df2c3007c442ccfd24015430aa540ce1a09571efcbdbed8348d0",
+    "1c0d41393e5c6b54fa8f1b3274ea9790e93a15e3fd06a0d433a5561a8a200721"
+  ],
+  "model_revision": "6f6073b423013f6a7d4d9f39144961bfbfbc386b",
+  "prompt_sha256": "1668e5677a35e459471cb8911cb9e04a0f05d3655bcd2a6ebc9ea45ed6c5e41d"
+}
