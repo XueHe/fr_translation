@@ -89,28 +89,44 @@ The original run used Python 3.12.3, PyTorch 2.13.0+cu129, Transformers 5.17.0,
 BF16, greedy decoding, batch size 8, and a fixed model revision:
 `6f6073b423013f6a7d4d9f39144961bfbfbc386b`.
 
-The local model directory must contain the complete gated Llama model and a
-`download_manifest.json`. A template is provided at
-`config/download_manifest.example.json`; update `downloaded_at` after obtaining
-the exact pinned revision through an authorized Hugging Face account.
+The local model directory must contain the complete gated Llama model. An actual
+`download_manifest.json` can optionally be supplied via `MODEL_MANIFEST`; otherwise
+the runner checks the model directory for it. Missing provenance is recorded as
+null. `config/download_manifest.example.json` is a template, not proof of the
+revision of a shared model. Confirm the shared model revision before combining
+its results with the original run. Metadata alone does not verify model weights.
 
 ## Resume on Jean-Zay
 
-Edit the site-specific `#SBATCH` account/partition directives if required, then
-submit from the repository root:
+Copy `.env.example` to `.env` and fill in the absolute paths for this machine.
+The private `.env` is ignored by Git. It uses trusted Bash assignment syntax;
+quote paths with spaces. Both Python and the scheduler load this configuration.
+CLI arguments override Python configuration values. Edit the site-specific
+`#SBATCH` account/partition directives, then submit from the repository root:
 
 ```bash
-export OUTPUT_DIR=/path/to/private/llama3_3_70b_full_20260928
-export MODEL_DIR=/path/to/private/llama3_3_70b
-export PYTHON=/path/to/venv/bin/python
-
+cp .env.example .env
+# Edit .env before submitting.
 sbatch --export=ALL slurm/translate_4gpu.sbatch
 ```
 
+For submission from another directory, provide the absolute configuration path:
+
+```bash
+ENV_FILE=/absolute/path/to/fr_translation/.env sbatch --export=ALL /absolute/path/to/fr_translation/slurm/translate_4gpu.sbatch
+```
+
+Set `MAX_SESSION_RECORDS=100` for a trial of at most 100 new terms per shard.
+Empty it for full continuation. Leave `GPU_DEVICES` empty under SLURM: the job
+preserves scheduler-provided `CUDA_VISIBLE_DEVICES`, including GPU UUIDs.
+If the site sets GPU visibility only inside `srun`, launch the script within
+that site's GPU job step. It fails clearly rather than selecting unallocated GPUs.
+Outside SLURM, `GPU_DEVICES` can explicitly select the four devices.
+
 The job requests four GPUs on one node and launches:
 
-- shard 0 on visible GPUs `0,1`;
-- shard 1 on visible GPUs `2,3`.
+- shard 0 on the first two allocated devices;
+- shard 1 on the remaining two allocated devices.
 
 The script traps `SIGTERM`/`SIGINT`, allowing SLURM cancellation or wall-time
 expiry without losing completed batches. Re-submit the same command to resume.
@@ -118,7 +134,7 @@ expiry without losing completed batches. Re-submit the same command to resume.
 Check progress with:
 
 ```bash
-$PYTHON scripts/translation_llama_full.py status --output "$OUTPUT_DIR"
+python scripts/translation_llama_full.py --env-file /absolute/path/to/fr_translation/.env status
 ```
 
 ## Safety checks

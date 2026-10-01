@@ -17,6 +17,7 @@ import json
 import os
 import platform
 import sys
+import subprocess
 import time
 from itertools import islice
 from pathlib import Path
@@ -34,6 +35,22 @@ PROMPT = (
     "an ambiguous abbreviation without evidence. Return only one translated term, "
     "without explanations or alternatives.\n\nEnglish term: {term}"
 )
+
+
+def load_env_file(path: Path, required: bool = False) -> None:
+    """Use the same trusted Bash configuration as the scheduler script."""
+    if not path.is_file():
+        if required:
+            raise FileNotFoundError(f"Missing configuration: {path}")
+        return
+    result = subprocess.run(
+        ["bash", "-c", 'set -a; source "$1" >&2 || exit; env -0', "bash", str(path.resolve())],
+        check=True, capture_output=True,
+    )
+    for item in result.stdout.split(b"\0"):
+        if b"=" in item:
+            key, value = item.split(b"=", 1)
+            os.environ[os.fsdecode(key)] = os.fsdecode(value)
 
 
 def atomic_json(path: Path, value: dict) -> None:
@@ -294,7 +311,11 @@ def run_shard(args: argparse.Namespace) -> None:
         "model": MODEL_REPO,
         "revision": MODEL_REVISION,
         "model_path": str(model_path),
-        "model_path_manifest": json.loads((model_path / "download_manifest.json").read_text()),
+        "model_path_manifest": (
+            json.loads(args.model_manifest.read_text())
+            if args.model_manifest and args.model_manifest.is_file() else None
+        ),
+        "model_revision_verified": False,
         "prompt": PROMPT,
         "prompt_sha256": hashlib.sha256(PROMPT.encode()).hexdigest(),
         "input": str(input_path),
@@ -465,6 +486,16 @@ def status(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    env_parser = argparse.ArgumentParser(add_help=False)
+    env_parser.add_argument("--env-file", type=Path)
+    env_args, remaining = env_parser.parse_known_args()
+    configured_env = env_args.env_file or os.environ.get("ENV_FILE")
+    load_env_file(
+        Path(configured_env) if configured_env else Path(__file__).resolve().parents[1] / ".env",
+        required=bool(configured_env),
+    )
+    output_default = os.environ.get("OUTPUT_DIR") or None
+    model_default = os.environ.get("MODEL_DIR") or None
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -477,20 +508,27 @@ def main() -> None:
     prepare_parser.add_argument("--force", action="store_true")
 
     run_parser = subparsers.add_parser("run-shard")
-    run_parser.add_argument("--output", type=Path, required=True)
-    run_parser.add_argument("--model-path", type=Path, required=True)
+    run_parser.add_argument("--output", type=Path, default=output_default, required=not output_default)
+    run_parser.add_argument("--model-path", type=Path, default=model_default, required=not model_default)
+    run_parser.add_argument("--model-manifest", type=Path, default=os.environ.get("MODEL_MANIFEST") or None)
     run_parser.add_argument("--shard", type=int, required=True)
-    run_parser.add_argument("--batch-size", type=int, default=8)
+    run_parser.add_argument("--batch-size", type=int, default=int(os.environ.get("BATCH_SIZE") or 8))
     run_parser.add_argument("--max-new-tokens", type=int, default=128)
     run_parser.add_argument("--max-input-tokens", type=int, default=2048)
     run_parser.add_argument("--expected-gpus", type=int, default=2)
-    run_parser.add_argument("--max-memory-per-gpu", default="90GiB")
-    run_parser.add_argument("--max-session-records", type=int)
+    run_parser.add_argument("--max-memory-per-gpu", default=os.environ.get("MAX_MEMORY_PER_GPU") or "90GiB")
+    run_parser.add_argument("--max-session-records", type=int, default=int(os.environ["MAX_SESSION_RECORDS"]) if os.environ.get("MAX_SESSION_RECORDS") else None)
 
     status_parser = subparsers.add_parser("status")
-    status_parser.add_argument("--output", type=Path, required=True)
+    status_parser.add_argument("--output", type=Path, default=output_default, required=not output_default)
 
-    args = parser.parse_args()
+    args = parser.parse_args(remaining)
+    if args.command == "run-shard":
+        if args.model_manifest is None:
+            candidate = args.model_path / "download_manifest.json"
+            args.model_manifest = candidate if candidate.is_file() else None
+        elif not args.model_manifest.is_file():
+            parser.error(f"Model manifest does not exist: {args.model_manifest}")
     {"prepare": prepare, "run-shard": run_shard, "status": status}[args.command](args)
 
 
